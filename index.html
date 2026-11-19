@@ -801,13 +801,27 @@
       statusBanner.textContent = msg;
     }
 
-    // 다중 월 API 병렬 호출 및 데이터 수집
+    // 다중 월 API 병렬 호출 및 데이터 수집 (Vercel 서버리스 프록시 자동 연동)
     async function fetchMultiMonthApi(lawdCd, months, key) {
+      // Vercel 배포 환경 여부 감지 (HTTP/HTTPS 환경에서는 Vercel /api/rent 프록시 사용)
+      const isHttpEnv = window.location.protocol.startsWith('http');
+
       const promises = months.map(async (ymd) => {
         try {
-          const url = `https://apis.data.go.kr/1613000/RTMSDataSvcRHRent/getRTMSDataSvcRHRent?serviceKey=${encodeURIComponent(key)}&LAWD_CD=${lawdCd}&DEAL_YMD=${ymd}&numOfRows=100`;
+          let url = '';
+          if (isHttpEnv) {
+            // ⭐️ Vercel 배포 환경: Vercel 환경변수(SERVICE_KEY)를 읽는 서버리스 API 호출 (CORS 해결 + 키 보안)
+            url = `/api/rent?lawdCd=${lawdCd}&dealYmd=${ymd}`;
+          } else {
+            // 로컬(file://) 환경: 직접 공공데이터포털 API 호출
+            url = `https://apis.data.go.kr/1613000/RTMSDataSvcRHRent/getRTMSDataSvcRHRent?serviceKey=${encodeURIComponent(key)}&LAWD_CD=${lawdCd}&DEAL_YMD=${ymd}&numOfRows=100`;
+          }
+
           const res = await fetch(url);
-          if (!res.ok) return [];
+          if (!res.ok) {
+            console.warn(`[${ymd}] 응답 실패:`, res.status);
+            return [];
+          }
           const xml = await res.text();
           return parseXml(xml);
         } catch (err) {
@@ -829,8 +843,9 @@
       const baseYmd = inputDealYmd.value.trim() || '202312';
       const rangeCount = parseInt(selectDateRange.value, 10) || 6;
       const convRate = (parseFloat(inputConversionRate.value) || 5.5) / 100;
+      const isHttpEnv = window.location.protocol.startsWith('http');
 
-      // 조회 대상 월 리스트 생성 (예: 최근 6개월 -> 202312, 202311, 202310, 202309, 202308, 202307)
+      // 조회 대상 월 리스트 생성
       const targetMonths = getRecentMonthsList(baseYmd, rangeCount);
       const startMonthStr = `${targetMonths[targetMonths.length - 1].slice(0, 4)}.${targetMonths[targetMonths.length - 1].slice(4, 6)}`;
       const endMonthStr = `${targetMonths[0].slice(0, 4)}.${targetMonths[0].slice(4, 6)}`;
@@ -841,7 +856,8 @@
       let records = [];
       const key = (getServiceKey() || SERVICE_KEY || '').trim();
 
-      if (!key || key.includes('여기에_')) {
+      // 로컬 파일(file://)인데 키가 없는 경우에만 경고 (Vercel에서는 Vercel 환경변수를 쓰므로 통과)
+      if (!isHttpEnv && (!key || key.includes('여기에_'))) {
         showStatus('⚠️ config.js 파일에 공공데이터포털 인증키를 입력해주세요.');
         alert('API 인증키를 찾을 수 없습니다. config.js 파일의 SERVICE_KEY에 인증키가 올바르게 입력되어 있는지 확인해주세요.');
         return;
