@@ -1,0 +1,11 @@
+# 🔑 API 인증키가 포함된 실제 설정 파일 (GitHub 업로드 절대 금지)
+config.js
+
+# 의존성 및 시스템 파일
+node_modules/
+.DS_Store
+Thumbs.db
+
+# 로그
+*.log
+.env

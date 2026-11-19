@@ -1,0 +1,10 @@
+{
+  "name": "room-price-analyzer",
+  "version": "1.0.0",
+  "description": "동네별 전월세 시세 분석 및 적정성 판독기",
+  "type": "module",
+  "scripts": {
+    "test": "node test_step1.js"
+  }
+}
+

@@ -1,0 +1,1015 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>방값판독기 - 동네별 전월세 시세 분석 및 적정성 판독기</title>
+  <link rel="stylesheet" href="./css/style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- 1. 상단 네비게이션 헤더 -->
+    <header class="navbar">
+      <div class="brand-wrap">
+        <div class="brand-icon">🏠</div>
+        <div class="brand-text">
+          <h1>방값판독기</h1>
+          <p>계약 전 빠르게 확인하는 내 방 적정 시세</p>
+        </div>
+      </div>
+    </header>
+
+    <!-- 2. 메인 대시보드 그리드 (좌: 입력 패널, 우: 결과 대시보드) -->
+    <div class="dashboard-grid">
+      
+      <!-- ================= 좌측: 입력 패널 ================= -->
+      <aside class="card">
+        <h2 class="card-title">📝 매물 조건 입력</h2>
+        
+        <form id="propertyForm" class="form-section" onsubmit="return false;">
+          
+          <!-- 지역 3단 선택 (시/도 -> 시/군/구 -> 읍/면/동) -->
+          <div class="form-group">
+            <label>지역 선택</label>
+            <div class="region-select-row">
+              <select id="selectSido" aria-label="시/도">
+                <option value="서울특별시">서울특별시</option>
+              </select>
+              <select id="selectSigungu" aria-label="시/군/구">
+                <!-- JS에서 동적 로드 -->
+              </select>
+              <select id="selectDong" aria-label="읍/면/동">
+                <!-- JS에서 동적 로드 -->
+              </select>
+            </div>
+          </div>
+
+          <!-- 주택 유형 필터 -->
+          <div class="form-group">
+            <label for="selectHouseType">주택 유형</label>
+            <select id="selectHouseType">
+              <option value="전체">전체 (연립 + 다세대)</option>
+              <option value="연립">연립</option>
+              <option value="다세대">다세대</option>
+            </select>
+          </div>
+
+          <!-- 계약 구분 (전세 / 월세 세그먼트 토글) -->
+          <div class="form-group">
+            <label>계약 구분</label>
+            <div class="rent-type-toggle">
+              <button type="button" class="rent-type-btn active" id="btnTypeJeonse">전세</button>
+              <button type="button" class="rent-type-btn" id="btnTypeMonthly">월세</button>
+            </div>
+          </div>
+
+          <!-- 금액 입력 (보증금 & 월세) -->
+          <div class="input-row">
+            <div class="form-group">
+              <label for="inputDeposit">보증금 (만원)</label>
+              <input type="number" id="inputDeposit" value="24000" placeholder="예: 24000" step="100" required>
+            </div>
+            <div class="form-group">
+              <label for="inputMonthlyRent">월세 (만원)</label>
+              <input type="number" id="inputMonthlyRent" value="0" placeholder="0" step="5" disabled>
+            </div>
+          </div>
+
+          <!-- 전용면적 & 평수 자동계산 -->
+          <div class="form-group">
+            <label for="inputArea">
+              <span>전용면적 (㎡)</span>
+              <span class="area-pyeong-badge" id="areaPyeongDisplay">약 22.1평</span>
+            </label>
+            <input type="number" id="inputArea" value="73.0" step="0.1" placeholder="예: 73.0" required>
+          </div>
+
+          <!-- 조회 기간 범위 선택 (3개월 / 6개월 / 1년 / 단일월) -->
+          <div class="form-group">
+            <label for="selectDateRange">
+              <span>조회 기간 범위</span>
+              <span style="font-weight: 400; color: var(--primary); font-size: 0.8rem;">표본 신뢰도 향상</span>
+            </label>
+            <select id="selectDateRange">
+              <option value="6" selected>최근 6개월간 거래 분석 (추천)</option>
+              <option value="12">최근 1년간 거래 분석 (표본 극대화)</option>
+              <option value="3">최근 3개월간 거래 분석</option>
+              <option value="1">선택 계약월 1달만 분석</option>
+            </select>
+          </div>
+
+          <!-- 기준 계약년월 & 건축년도 -->
+          <div class="input-row">
+            <div class="form-group">
+              <label for="inputDealYmd">기준 계약년월</label>
+              <input type="text" id="inputDealYmd" value="202312" maxlength="6" placeholder="202312">
+            </div>
+            <div class="form-group">
+              <label for="inputBuildYear">건축년도 (선택)</label>
+              <input type="number" id="inputBuildYear" placeholder="예: 2018">
+            </div>
+          </div>
+
+          <!-- 전월세전환율 -->
+          <div class="form-group">
+            <label for="inputConversionRate">
+              <span>전월세전환율 (%)</span>
+              <span style="font-weight: 400; color: var(--text-muted); font-size: 0.8rem;">기본 5.5%</span>
+            </label>
+            <input type="number" id="inputConversionRate" value="5.5" step="0.1" min="1" max="20">
+          </div>
+
+          <!-- 실행 버튼 -->
+          <button type="button" class="cta-button" id="btnAnalyze">
+            <span>🔍</span>
+            <span>시세 적정성 분석하기</span>
+          </button>
+
+          <!-- 상태 알림 바 -->
+          <div id="statusBanner" class="status-banner" style="display: none;"></div>
+        </form>
+      </aside>
+
+      <!-- ================= 우측: 결과 대시보드 ================= -->
+      <main id="resultContainer">
+        
+        <!-- 분석 전: 안내 Empty State -->
+        <div class="card empty-state" id="emptyState">
+          <div class="empty-state-icon">📊</div>
+          <h3>원하는 매물 조건을 입력하고 분석해보세요</h3>
+          <p>
+            국토교통부 연립·다세대 실거래가 빅데이터를 바탕으로<br>
+            <strong>최근 6개월~1년간</strong>의 시세 분포와 내 방의 적정성 등급을 정확하게 판독해 드립니다.
+          </p>
+        </div>
+
+        <!-- 분석 후: 대시보드 뷰 (초기 hidden) -->
+        <div id="dashboardView" style="display: none;">
+          
+          <!-- 1. 적정성 판정 요약 카드 -->
+          <section class="card eval-card" id="evalCard">
+            <div class="eval-header">
+              <div>
+                <span class="eval-badge" id="evalBadge">🔵 적정</span>
+                <span class="disparity-pill" id="evalDisparityText">주변 중앙값 대비 +0.0%</span>
+              </div>
+              <div style="text-align: right;">
+                <div style="font-size: 0.9rem; font-weight: 700; color: var(--text-main);" id="sampleCountLabel">비교 표본: 0건</div>
+                <div style="font-size: 0.78rem; color: var(--primary);" id="queryPeriodBadge">조회기간: -</div>
+              </div>
+            </div>
+
+            <div class="eval-comment" id="evalComment">적정 시세 범위 내에 있습니다.</div>
+            <p class="eval-sub" id="evalDetailSub">동일 동네 및 유사 면적 거래 기준</p>
+
+            <div class="eval-compare-bar">
+              <div class="eval-compare-item">
+                <div class="label">내 매물 환산보증금</div>
+                <div class="val" id="evalMyDepositVal" style="color: var(--primary);">24,000만원</div>
+              </div>
+              <div class="eval-compare-item">
+                <div class="label">주변 실거래 중앙값</div>
+                <div class="val" id="evalMarketMedianVal">24,500만원</div>
+              </div>
+              <div class="eval-compare-item">
+                <div class="label">주변 실거래 평균가</div>
+                <div class="val" id="evalMarketAvgVal">24,545만원</div>
+              </div>
+            </div>
+
+            <!-- 통계 5수치 그리드 -->
+            <div class="stat-pill-grid">
+              <div class="stat-pill">
+                <div class="name">최저가</div>
+                <div class="num" id="statMin">-</div>
+              </div>
+              <div class="stat-pill">
+                <div class="name">Q1 (하위 25%)</div>
+                <div class="num" id="statQ1">-</div>
+              </div>
+              <div class="stat-pill" style="border-color: var(--primary);">
+                <div class="name" style="color: var(--primary);">중앙값 (50%)</div>
+                <div class="num" id="statMedian" style="color: var(--primary);">-</div>
+              </div>
+              <div class="stat-pill">
+                <div class="name">Q3 (상위 25%)</div>
+                <div class="num" id="statQ3">-</div>
+              </div>
+              <div class="stat-pill">
+                <div class="name">최고가</div>
+                <div class="num" id="statMax">-</div>
+              </div>
+            </div>
+          </section>
+
+          <!-- 2. 시세 분포 시각화 차트 -->
+          <section class="card">
+            <h3 class="card-title">📈 시세 분포 및 내 매물 위치</h3>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px;">
+              조회 기간 동안의 실거래가 전체 구간 및 핵심 50%(Q1~Q3) 시세 구간 속 내 매물 위치입니다.
+            </p>
+            <div class="chart-container" id="distributionChartWrap">
+              <!-- SVG 차트 렌더링 영역 -->
+            </div>
+          </section>
+
+          <!-- 3. 실거래 비교 테이블 -->
+          <section class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+              <h3 class="card-title" style="margin-bottom: 0;">📋 실거래 비교 내역 (<span id="tableRecordCount">0</span>건)</h3>
+              <span style="font-size: 0.8rem; color: var(--text-muted);" id="areaFilterRangeText">유사면적 ±15%</span>
+            </div>
+            
+            <div class="table-responsive">
+              <table>
+                <thead>
+                  <tr>
+                    <th>계약일</th>
+                    <th>건물명</th>
+                    <th>유형</th>
+                    <th>층</th>
+                    <th class="text-right">전용면적</th>
+                    <th class="text-right">보증금</th>
+                    <th class="text-right">월세</th>
+                    <th class="text-right">환산보증금</th>
+                    <th>건축년도</th>
+                  </tr>
+                </thead>
+                <tbody id="tableBody">
+                  <!-- 데이터 동적 렌더링 -->
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+        </div>
+      </main>
+
+    </div>
+  </div>
+
+  <!-- 🔑 안전한 설정 파일 로드 (config.js는 .gitignore에 의해 GitHub 업로드에서 완전히 제외됩니다) -->
+  <script src="./config.js"></script>
+
+  <script>
+    // 외부 config.js 파일에서 안전하게 키를 읽어옵니다. (GitHub에 키 절대 노출 안 됨)
+    const getServiceKey = () => {
+      if (typeof CONFIG !== 'undefined' && CONFIG.SERVICE_KEY && !CONFIG.SERVICE_KEY.includes('여기에_')) {
+        return CONFIG.SERVICE_KEY.trim();
+      }
+      if (typeof window !== 'undefined' && window.CONFIG && window.CONFIG.SERVICE_KEY && !window.CONFIG.SERVICE_KEY.includes('여기에_')) {
+        return window.CONFIG.SERVICE_KEY.trim();
+      }
+      return '';
+    };
+
+    const SERVICE_KEY = getServiceKey();
+    console.log('방값판독기 API 키 로드 상태:', SERVICE_KEY ? '연결 성공 ✅' : '키를 찾지 못함 ❌');
+
+    // 1. 지역 데이터셋
+    const REGION_DATA = {
+      "서울특별시": {
+        "종로구": { code: "11110", dongs: ["평창동", "청운동", "부암동", "신영동", "구기동", "혜화동", "명륜동", "익선동", "숭인동", "창신동", "무악동"] },
+        "강남구": { code: "11680", dongs: ["역삼동", "개포동", "청담동", "삼성동", "대치동", "신사동", "논현동", "압구정동", "세곡동", "자곡동", "율현동", "일원동", "수서동", "도곡동"] },
+        "서초구": { code: "11650", dongs: ["서초동", "잠원동", "반포동", "방배동", "양재동", "우면동", "원지동", "내곡동", "염곡동", "신원동"] },
+        "송파구": { code: "11710", dongs: ["잠실동", "신천동", "풍납동", "송파동", "석촌동", "삼전동", "가락동", "문정동", "장지동", "방이동", "오금동", "거여동", "마천동"] },
+        "마포구": { code: "11440", dongs: ["망원동", "연남동", "서교동", "합정동", "상암동", "성산동", "공덕동", "아현동", "도화동", "용강동", "대흥동", "염리동", "신수동"] },
+        "성동구": { code: "11200", dongs: ["성수동1가", "성수동2가", "옥수동", "금호동1가", "금호동2가", "금호동4가", "행당동", "응봉동", "마장동", "사근동", "송정동", "용답동"] },
+        "용산구": { code: "11170", dongs: ["한남동", "이태원동", "보광동", "용산동", "후암동", "갈월동", "남영동", "청파동", "원효로", "효창동", "이촌동"] },
+        "관악구": { code: "11620", dongs: ["신림동", "봉천동", "남현동", "낙성대동", "서원동", "신원동", "서림동", "삼성동", "난곡동", "대학동"] },
+        "동작구": { code: "11590", dongs: ["노량진동", "상도동", "흑석동", "동작동", "사당동", "대방동", "신대방동"] },
+        "영등포구": { code: "11560", dongs: ["여의도동", "당산동", "문래동", "양평동", "영등포동", "신길동", "대림동", "도림동"] },
+        "서대문구": { code: "11410", dongs: ["연희동", "홍제동", "홍은동", "남가좌동", "북가좌동", "충정로", "북아현동", "대현동", "대신동", "창천동"] },
+        "노원구": { code: "11350", dongs: ["상계동", "중계동", "하계동", "공릉동", "월계동"] },
+        "강동구": { code: "11740", dongs: ["천호동", "길동", "암사동", "명일동", "고덕동", "상일동", "둔촌동", "성내동", "강일동"] },
+        "광진구": { code: "11215", dongs: ["화양동", "자양동", "구의동", "군자동", "중곡동", "능동", "광장동"] }
+      }
+    };
+
+    // 2. 샘플 XML 데이터
+    const SAMPLE_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<response>
+  <header>
+    <resultCode>000</resultCode>
+    <resultMsg>NORMAL SERVICE.</resultMsg>
+  </header>
+  <body>
+    <items>
+      <item>
+        <buildYear>1986</buildYear>
+        <contractType>신규</contractType>
+        <dealDay>13</dealDay>
+        <dealMonth>12</dealMonth>
+        <dealYear>2023</dealYear>
+        <deposit>24,000</deposit>
+        <excluUseAr>73.02</excluUseAr>
+        <floor>2</floor>
+        <houseType>연립</houseType>
+        <jibun>329-2</jibun>
+        <mhouseNm>럭키평창빌라</mhouseNm>
+        <monthlyRent>0</monthlyRent>
+        <sggCd>11110</sggCd>
+        <umdNm>평창동</umdNm>
+      </item>
+      <item>
+        <buildYear>2002</buildYear>
+        <contractType>갱신</contractType>
+        <dealDay>15</dealDay>
+        <dealMonth>12</dealMonth>
+        <dealYear>2023</dealYear>
+        <deposit>22,000</deposit>
+        <excluUseAr>75.50</excluUseAr>
+        <floor>1</floor>
+        <houseType>연립</houseType>
+        <jibun>110-5</jibun>
+        <mhouseNm>평창하이츠</mhouseNm>
+        <monthlyRent>10</monthlyRent>
+        <sggCd>11110</sggCd>
+        <umdNm>평창동</umdNm>
+      </item>
+      <item>
+        <buildYear>2010</buildYear>
+        <contractType>신규</contractType>
+        <dealDay>20</dealDay>
+        <dealMonth>12</dealMonth>
+        <dealYear>2023</dealYear>
+        <deposit>15,000</deposit>
+        <excluUseAr>71.20</excluUseAr>
+        <floor>3</floor>
+        <houseType>다세대</houseType>
+        <jibun>250-1</jibun>
+        <mhouseNm>평창그린빌</mhouseNm>
+        <monthlyRent>45</monthlyRent>
+        <sggCd>11110</sggCd>
+        <umdNm>평창동</umdNm>
+      </item>
+      <item>
+        <buildYear>2018</buildYear>
+        <contractType>신규</contractType>
+        <dealDay>22</dealDay>
+        <dealMonth>12</dealMonth>
+        <dealYear>2023</dealYear>
+        <deposit>26,000</deposit>
+        <excluUseAr>78.10</excluUseAr>
+        <floor>4</floor>
+        <houseType>다세대</houseType>
+        <jibun>401-3</jibun>
+        <mhouseNm>평창힐스</mhouseNm>
+        <monthlyRent>0</monthlyRent>
+        <sggCd>11110</sggCd>
+        <umdNm>평창동</umdNm>
+      </item>
+      <item>
+        <buildYear>2015</buildYear>
+        <contractType>신규</contractType>
+        <dealDay>18</dealDay>
+        <dealMonth>11</dealMonth>
+        <dealYear>2023</dealYear>
+        <deposit>25,500</deposit>
+        <excluUseAr>74.80</excluUseAr>
+        <floor>3</floor>
+        <houseType>다세대</houseType>
+        <jibun>150-2</jibun>
+        <mhouseNm>평창노블레스</mhouseNm>
+        <monthlyRent>0</monthlyRent>
+        <sggCd>11110</sggCd>
+        <umdNm>평창동</umdNm>
+      </item>
+      <item>
+        <buildYear>1995</buildYear>
+        <contractType>신규</contractType>
+        <dealDay>27</dealDay>
+        <dealMonth>11</dealMonth>
+        <dealYear>2023</dealYear>
+        <deposit>18,000</deposit>
+        <excluUseAr>69.30</excluUseAr>
+        <floor>1</floor>
+        <houseType>연립</houseType>
+        <jibun>310-4</jibun>
+        <mhouseNm>평창중앙빌라</mhouseNm>
+        <monthlyRent>25</monthlyRent>
+        <sggCd>11110</sggCd>
+        <umdNm>평창동</umdNm>
+      </item>
+      <item>
+        <buildYear>2008</buildYear>
+        <contractType>신규</contractType>
+        <dealDay>09</dealDay>
+        <dealMonth>10</dealMonth>
+        <dealYear>2023</dealYear>
+        <deposit>23,500</deposit>
+        <excluUseAr>72.50</excluUseAr>
+        <floor>2</floor>
+        <houseType>연립</houseType>
+        <jibun>215-6</jibun>
+        <mhouseNm>평창우성빌라</mhouseNm>
+        <monthlyRent>0</monthlyRent>
+        <sggCd>11110</sggCd>
+        <umdNm>평창동</umdNm>
+      </item>
+      <item>
+        <buildYear>2019</buildYear>
+        <contractType>신규</contractType>
+        <dealDay>21</dealDay>
+        <dealMonth>10</dealMonth>
+        <dealYear>2023</dealYear>
+        <deposit>12,000</deposit>
+        <excluUseAr>76.20</excluUseAr>
+        <floor>4</floor>
+        <houseType>다세대</houseType>
+        <jibun>198-1</jibun>
+        <mhouseNm>평창포레스트</mhouseNm>
+        <monthlyRent>60</monthlyRent>
+        <sggCd>11110</sggCd>
+        <umdNm>평창동</umdNm>
+      </item>
+      <item>
+        <buildYear>2003</buildYear>
+        <contractType>갱신</contractType>
+        <dealDay>14</dealDay>
+        <dealMonth>09</dealMonth>
+        <dealYear>2023</dealYear>
+        <deposit>24,500</deposit>
+        <excluUseAr>73.50</excluUseAr>
+        <floor>3</floor>
+        <houseType>연립</houseType>
+        <jibun>88-1</jibun>
+        <mhouseNm>평창아트빌</mhouseNm>
+        <monthlyRent>0</monthlyRent>
+        <sggCd>11110</sggCd>
+        <umdNm>평창동</umdNm>
+      </item>
+      <item>
+        <buildYear>2012</buildYear>
+        <contractType>신규</contractType>
+        <dealDay>04</dealDay>
+        <dealMonth>08</dealMonth>
+        <dealYear>2023</dealYear>
+        <deposit>27,000</deposit>
+        <excluUseAr>79.00</excluUseAr>
+        <floor>2</floor>
+        <houseType>다세대</houseType>
+        <jibun>412-1</jibun>
+        <mhouseNm>평창스타빌</mhouseNm>
+        <monthlyRent>0</monthlyRent>
+        <sggCd>11110</sggCd>
+        <umdNm>평창동</umdNm>
+      </item>
+      <item>
+        <buildYear>1998</buildYear>
+        <contractType>신규</contractType>
+        <dealDay>28</dealDay>
+        <dealMonth>07</dealMonth>
+        <dealYear>2023</dealYear>
+        <deposit>20,000</deposit>
+        <excluUseAr>68.50</excluUseAr>
+        <floor>2</floor>
+        <houseType>연립</houseType>
+        <jibun>102-4</jibun>
+        <mhouseNm>평창현대</mhouseNm>
+        <monthlyRent>15</monthlyRent>
+        <sggCd>11110</sggCd>
+        <umdNm>평창동</umdNm>
+      </item>
+      <item>
+        <buildYear>2005</buildYear>
+        <contractType>신규</contractType>
+        <dealDay>10</dealDay>
+        <dealMonth>07</dealMonth>
+        <dealYear>2023</dealYear>
+        <deposit>25,000</deposit>
+        <excluUseAr>74.30</excluUseAr>
+        <floor>3</floor>
+        <houseType>다세대</houseType>
+        <jibun>312-8</jibun>
+        <mhouseNm>평창파크빌</mhouseNm>
+        <monthlyRent>0</monthlyRent>
+        <sggCd>11110</sggCd>
+        <umdNm>평창동</umdNm>
+      </item>
+    </items>
+  </body>
+</response>`;
+
+    // 3. 이전 N개월 목록 생성 유틸 함수
+    function getRecentMonthsList(baseYmd, count) {
+      const year = parseInt(baseYmd.substring(0, 4), 10) || 2023;
+      const month = parseInt(baseYmd.substring(4, 6), 10) || 12;
+      const list = [];
+      let curY = year;
+      let curM = month;
+
+      for (let i = 0; i < count; i++) {
+        list.push(`${curY}${String(curM).padStart(2, '0')}`);
+        curM--;
+        if (curM === 0) {
+          curM = 12;
+          curY--;
+        }
+      }
+      return list;
+    }
+
+    // 4. XML 파서 및 계산
+    function parseXml(xmlString) {
+      const parser = new DOMParser();
+      const xmlDoc = parser.parseFromString(xmlString, 'text/xml');
+      const items = xmlDoc.getElementsByTagName('item');
+      const records = [];
+
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        const getVal = (tag) => {
+          const el = item.getElementsByTagName(tag)[0];
+          return el && el.textContent ? el.textContent.trim() : '';
+        };
+
+        const rawDeposit = getVal('deposit').replace(/,/g, '');
+        const rawRent = getVal('monthlyRent').replace(/,/g, '');
+        const rawArea = getVal('excluUseAr');
+
+        const deposit = parseFloat(rawDeposit) || 0;
+        const monthlyRent = parseFloat(rawRent) || 0;
+        const excluUseAr = parseFloat(rawArea) || 0;
+
+        if (excluUseAr <= 0) continue;
+
+        const year = getVal('dealYear');
+        const month = String(getVal('dealMonth')).padStart(2, '0');
+        const day = String(getVal('dealDay')).padStart(2, '0');
+
+        records.push({
+          sggCd: getVal('sggCd'),
+          umdNm: getVal('umdNm'),
+          houseType: getVal('houseType') || '연립',
+          mhouseNm: getVal('mhouseNm') || '건물명 미상',
+          jibun: getVal('jibun'),
+          buildYear: parseInt(getVal('buildYear'), 10) || null,
+          dealDate: (year && month && day) ? `${year}.${month}.${day}` : '-',
+          deposit,
+          monthlyRent,
+          excluUseAr,
+          floor: parseInt(getVal('floor'), 10) || null,
+          contractType: getVal('contractType') || '신규'
+        });
+      }
+      return records;
+    }
+
+    function calcConvertedDeposit(deposit, monthlyRent, rate = 0.055) {
+      if (monthlyRent === 0) return Math.round(deposit);
+      const val = deposit + (monthlyRent * 12) / rate;
+      return Math.round(val * 10) / 10;
+    }
+
+    function getPercentile(sorted, p) {
+      if (sorted.length === 0) return 0;
+      if (sorted.length === 1) return sorted[0];
+      const idx = (p / 100) * (sorted.length - 1);
+      const lower = Math.floor(idx);
+      const upper = Math.ceil(idx);
+      const weight = idx - lower;
+      if (lower === upper) return sorted[lower];
+      return sorted[lower] * (1 - weight) + sorted[upper] * weight;
+    }
+
+    function evaluateSuitability(myDeposit, median) {
+      if (!median || median <= 0) {
+        return { disparity: 0, badge: '⚪ 확인불가', color: '#6b7280', comment: '비교 데이터 부족' };
+      }
+      const disparity = Math.round(((myDeposit - median) / median) * 1000) / 10;
+      if (disparity < -10) {
+        return { 
+          disparity, 
+          badge: '🟣 의심 (과도한 저렴)', 
+          color: '#8b5cf6', 
+          comment: '주변 시세보다 지나치게 저렴합니다! 선순위 대출(근저당), 불법/위반건축물, 전세사기 및 허위매물 여부를 반드시 확인하세요.' 
+        };
+      } else if (disparity < -5) {
+        return { 
+          disparity, 
+          badge: '🟢 안심 (시세 이하)', 
+          color: '#10b981', 
+          comment: '주변 시세보다 저렴한 편입니다.' 
+        };
+      } else if (disparity <= 10) {
+        return { 
+          disparity, 
+          badge: '🔵 적정 (평균 수준)', 
+          color: '#3182f6', 
+          comment: '적정 시세 범위 내에 있습니다.' 
+        };
+      } else if (disparity <= 20) {
+        return { 
+          disparity, 
+          badge: '🟡 주의 (다소 높음)', 
+          color: '#f59e0b', 
+          comment: '주변 평균보다 다소 높습니다. 옵션이나 신축 여부를 확인하세요.' 
+        };
+      } else {
+        return { 
+          disparity, 
+          badge: '🔴 위험 (호갱 주의)', 
+          color: '#ef4444', 
+          comment: '주변 시세보다 현저히 비쌉니다. 계약 전 조건을 재확인하세요.' 
+        };
+      }
+    }
+
+    // 5. SVG 차트 렌더러
+    function renderChart(targetEl, stats, myDeposit, badgeColor) {
+      const { min, q1, median, average, q3, max } = stats;
+
+      const dataMin = Math.min(min, myDeposit);
+      const dataMax = Math.max(max, myDeposit);
+      const padding = (dataMax - dataMin) * 0.12 || 1000;
+      const axisMin = Math.max(0, dataMin - padding);
+      const axisMax = dataMax + padding;
+      const totalRange = axisMax - axisMin;
+
+      const width = 760;
+      const height = 180;
+      const margin = { left: 45, right: 45 };
+      const plotWidth = width - margin.left - margin.right;
+
+      const toX = (val) => margin.left + ((val - axisMin) / totalRange) * plotWidth;
+
+      const minX = toX(min);
+      const q1X = toX(q1);
+      const medX = toX(median);
+      const q3X = toX(q3);
+      const maxX = toX(max);
+      const myX = toX(myDeposit);
+
+      const barY = 95;
+      const barHeight = 28;
+
+      targetEl.innerHTML = `
+        <svg viewBox="0 0 ${width} ${height}" style="width: 100%; height: auto; font-family: -apple-system, BlinkMacSystemFont, sans-serif;">
+          <defs>
+            <linearGradient id="rangeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#93c5fd" stop-opacity="0.3"/>
+              <stop offset="100%" stop-color="#60a5fa" stop-opacity="0.3"/>
+            </linearGradient>
+            <linearGradient id="iqrGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.9"/>
+              <stop offset="100%" stop-color="#1d4ed8" stop-opacity="0.9"/>
+            </linearGradient>
+            <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+              <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.15"/>
+            </filter>
+          </defs>
+
+          <!-- 배경 라인 -->
+          <line x1="${margin.left}" y1="${barY + barHeight/2}" x2="${width - margin.right}" y2="${barY + barHeight/2}" stroke="#e2e8f0" stroke-width="6" stroke-linecap="round"/>
+
+          <!-- 전체 범위 바 -->
+          <rect x="${minX}" y="${barY + 6}" width="${Math.max(4, maxX - minX)}" height="${barHeight - 12}" rx="8" fill="url(#rangeGrad)"/>
+
+          <!-- 핵심 50% 구간 (Q1 ~ Q3) -->
+          <rect x="${q1X}" y="${barY}" width="${Math.max(4, q3X - q1X)}" height="${barHeight}" rx="6" fill="url(#iqrGrad)" filter="url(#shadow)"/>
+          <text x="${(q1X + q3X)/2}" y="${barY + 18}" fill="#ffffff" font-size="11" font-weight="700" text-anchor="middle" letter-spacing="0.5">핵심 시세 구간 (50%)</text>
+
+          <!-- 틱 포인트 -->
+          <circle cx="${minX}" cy="${barY + barHeight/2}" r="5" fill="#64748b"/>
+          <text x="${minX}" y="${barY + barHeight + 22}" fill="#64748b" font-size="11" text-anchor="middle" font-weight="600">최저 ${Math.round(min).toLocaleString()}만</text>
+
+          <circle cx="${maxX}" cy="${barY + barHeight/2}" r="5" fill="#64748b"/>
+          <text x="${maxX}" y="${barY + barHeight + 22}" fill="#64748b" font-size="11" text-anchor="middle" font-weight="600">최고 ${Math.round(max).toLocaleString()}만</text>
+
+          <text x="${q1X}" y="${barY - 8}" fill="#3b82f6" font-size="11" text-anchor="middle" font-weight="600">Q1 ${Math.round(q1).toLocaleString()}만</text>
+          <text x="${q3X}" y="${barY - 8}" fill="#3b82f6" font-size="11" text-anchor="middle" font-weight="600">Q3 ${Math.round(q3).toLocaleString()}만</text>
+
+          <!-- 중앙값 -->
+          <line x1="${medX}" y1="${barY - 4}" x2="${medX}" y2="${barY + barHeight + 4}" stroke="#1e293b" stroke-width="3" stroke-linecap="round"/>
+          <rect x="${medX - 44}" y="${barY + barHeight + 34}" width="88" height="22" rx="4" fill="#1e293b"/>
+          <text x="${medX}" y="${barY + barHeight + 49}" fill="#ffffff" font-size="11" font-weight="700" text-anchor="middle">중앙 ${Math.round(median).toLocaleString()}만</text>
+
+          <!-- 내 매물 마커 핀 -->
+          <g transform="translate(${myX}, ${barY - 35})" filter="url(#shadow)">
+            <path d="M -55,-28 h 110 a 6,6 0 0 1 6,6 v 20 a 6,6 0 0 1 -6,6 h -49 l -5,7 l -5,-7 h -51 a 6,6 0 0 1 -6,-6 v -20 a 6,6 0 0 1 6,-6 z" fill="${badgeColor}"/>
+            <text x="0" y="-12" fill="#ffffff" font-size="12" font-weight="800" text-anchor="middle">
+              내 매물: ${Math.round(myDeposit).toLocaleString()}만원
+            </text>
+            <circle cx="0" cy="35" r="6" fill="${badgeColor}" stroke="#ffffff" stroke-width="2.5"/>
+            <line x1="0" y1="12" x2="0" y2="35" stroke="${badgeColor}" stroke-width="2" stroke-dasharray="3,2"/>
+          </g>
+        </svg>
+      `;
+    }
+
+    // 6. UI 제어 및 이벤트 연결
+    // 지역 선택 바인딩
+    const selectSigungu = document.getElementById('selectSigungu');
+    const selectDong = document.getElementById('selectDong');
+    const seoulData = REGION_DATA["서울특별시"];
+
+    function initRegions() {
+      selectSigungu.innerHTML = '';
+      Object.keys(seoulData).forEach(gu => {
+        const opt = document.createElement('option');
+        opt.value = gu;
+        opt.textContent = gu;
+        selectSigungu.appendChild(opt);
+      });
+      selectSigungu.value = '종로구';
+      updateDongs('종로구');
+
+      selectSigungu.addEventListener('change', (e) => updateDongs(e.target.value));
+    }
+
+    function updateDongs(gu) {
+      selectDong.innerHTML = '';
+      const list = seoulData[gu].dongs;
+      list.forEach(d => {
+        const opt = document.createElement('option');
+        opt.value = d;
+        opt.textContent = d;
+        selectDong.appendChild(opt);
+      });
+      if (gu === '종로구') selectDong.value = '평창동';
+    }
+    initRegions();
+
+    // 전세/월세 토글
+    const btnTypeJeonse = document.getElementById('btnTypeJeonse');
+    const btnTypeMonthly = document.getElementById('btnTypeMonthly');
+    const inputMonthlyRent = document.getElementById('inputMonthlyRent');
+    const inputDeposit = document.getElementById('inputDeposit');
+    const inputArea = document.getElementById('inputArea');
+    const areaPyeongDisplay = document.getElementById('areaPyeongDisplay');
+    const inputBuildYear = document.getElementById('inputBuildYear');
+    const selectDateRange = document.getElementById('selectDateRange');
+    const inputDealYmd = document.getElementById('inputDealYmd');
+    const inputConversionRate = document.getElementById('inputConversionRate');
+    const selectHouseType = document.getElementById('selectHouseType');
+
+    btnTypeJeonse.addEventListener('click', () => {
+      btnTypeJeonse.classList.add('active');
+      btnTypeMonthly.classList.remove('active');
+      inputMonthlyRent.value = '0';
+      inputMonthlyRent.disabled = true;
+    });
+
+    btnTypeMonthly.addEventListener('click', () => {
+      btnTypeMonthly.classList.add('active');
+      btnTypeJeonse.classList.remove('active');
+      inputMonthlyRent.disabled = false;
+      if (inputMonthlyRent.value === '0') inputMonthlyRent.value = '45';
+    });
+
+    function updatePyeong() {
+      const sqm = parseFloat(inputArea.value) || 0;
+      if (sqm > 0) {
+        areaPyeongDisplay.textContent = `약 ${(sqm / 3.3058).toFixed(1)}평`;
+      } else {
+        areaPyeongDisplay.textContent = '약 0평';
+      }
+    }
+    inputArea.addEventListener('input', updatePyeong);
+    updatePyeong();
+
+    // 대시보드 뷰 엘리먼트
+    const btnAnalyze = document.getElementById('btnAnalyze');
+    const statusBanner = document.getElementById('statusBanner');
+    const emptyState = document.getElementById('emptyState');
+    const dashboardView = document.getElementById('dashboardView');
+
+    const evalCard = document.getElementById('evalCard');
+    const evalBadge = document.getElementById('evalBadge');
+    const evalDisparityText = document.getElementById('evalDisparityText');
+    const sampleCountLabel = document.getElementById('sampleCountLabel');
+    const queryPeriodBadge = document.getElementById('queryPeriodBadge');
+    const evalComment = document.getElementById('evalComment');
+    const evalMyDepositVal = document.getElementById('evalMyDepositVal');
+    const evalMarketMedianVal = document.getElementById('evalMarketMedianVal');
+    const evalMarketAvgVal = document.getElementById('evalMarketAvgVal');
+
+    const statMin = document.getElementById('statMin');
+    const statQ1 = document.getElementById('statQ1');
+    const statMedian = document.getElementById('statMedian');
+    const statQ3 = document.getElementById('statQ3');
+    const statMax = document.getElementById('statMax');
+
+    const distributionChartWrap = document.getElementById('distributionChartWrap');
+    const tableRecordCount = document.getElementById('tableRecordCount');
+    const areaFilterRangeText = document.getElementById('areaFilterRangeText');
+    const tableBody = document.getElementById('tableBody');
+
+    function showStatus(msg) {
+      statusBanner.style.display = 'block';
+      statusBanner.textContent = msg;
+    }
+
+    // 다중 월 API 병렬 호출 및 데이터 수집
+    async function fetchMultiMonthApi(lawdCd, months, key) {
+      const promises = months.map(async (ymd) => {
+        try {
+          const url = `https://apis.data.go.kr/1613000/RTMSDataSvcRHRent/getRTMSDataSvcRHRent?serviceKey=${encodeURIComponent(key)}&LAWD_CD=${lawdCd}&DEAL_YMD=${ymd}&numOfRows=100`;
+          const res = await fetch(url);
+          if (!res.ok) return [];
+          const xml = await res.text();
+          return parseXml(xml);
+        } catch (err) {
+          console.warn(`[${ymd}] 조회 실패:`, err);
+          return [];
+        }
+      });
+
+      const results = await Promise.all(promises);
+      const allRecords = results.flat();
+      return allRecords;
+    }
+
+    // 핵심 분석 실행 (실제 배포 모드)
+    async function runDashboard() {
+      const gu = selectSigungu.value;
+      const dong = selectDong.value;
+      const lawdCd = seoulData[gu].code;
+      const baseYmd = inputDealYmd.value.trim() || '202312';
+      const rangeCount = parseInt(selectDateRange.value, 10) || 6;
+      const convRate = (parseFloat(inputConversionRate.value) || 5.5) / 100;
+
+      // 조회 대상 월 리스트 생성 (예: 최근 6개월 -> 202312, 202311, 202310, 202309, 202308, 202307)
+      const targetMonths = getRecentMonthsList(baseYmd, rangeCount);
+      const startMonthStr = `${targetMonths[targetMonths.length - 1].slice(0, 4)}.${targetMonths[targetMonths.length - 1].slice(4, 6)}`;
+      const endMonthStr = `${targetMonths[0].slice(0, 4)}.${targetMonths[0].slice(4, 6)}`;
+      const periodLabelText = rangeCount === 1 ? `${endMonthStr} (1개월)` : `${startMonthStr} ~ ${endMonthStr} (${rangeCount}개월)`;
+
+      showStatus(`🌐 국토교통부 실시간 실거래가 조회 중 (${periodLabelText})...`);
+
+      let records = [];
+      const key = (getServiceKey() || SERVICE_KEY || '').trim();
+
+      if (!key || key.includes('여기에_')) {
+        showStatus('⚠️ config.js 파일에 공공데이터포털 인증키를 입력해주세요.');
+        alert('API 인증키를 찾을 수 없습니다. config.js 파일의 SERVICE_KEY에 인증키가 올바르게 입력되어 있는지 확인해주세요.');
+        return;
+      }
+
+      try {
+        records = await fetchMultiMonthApi(lawdCd, targetMonths, key);
+
+        if (records.length === 0) {
+          showStatus(`선택하신 조건의 실시간 데이터가 0건입니다. (${periodLabelText})`);
+        } else {
+          showStatus(`✅ 국토교통부 실시간 거래 내역 ${records.length}건을 성공적으로 수신했습니다. (${periodLabelText})`);
+        }
+      } catch (err) {
+        console.error('API 호출 에러:', err);
+        showStatus(`API 호출 오류가 발생했습니다: ${err.message}`);
+        return;
+      }
+
+      // 내 매물 계산
+      const myDep = parseFloat(inputDeposit.value) || 0;
+      const myRent = parseFloat(inputMonthlyRent.value) || 0;
+      const myArea = parseFloat(inputArea.value) || 0;
+      const houseType = selectHouseType.value;
+      const myConverted = calcConvertedDeposit(myDep, myRent, convRate);
+
+      // ⭐️ [3단계 예외 처리]: 1차 필터링 (기본 ±15%)
+      let tolerance = 0.15;
+      let isExpanded = false;
+
+      let minArea = Math.round(myArea * (1 - tolerance) * 10) / 10;
+      let maxArea = Math.round(myArea * (1 + tolerance) * 10) / 10;
+
+      let filtered = records.filter(r => {
+        if (dong && r.umdNm !== dong) return false;
+        if (houseType !== '전체' && r.houseType !== houseType) return false;
+        if (myArea > 0 && (r.excluUseAr < minArea || r.excluUseAr > maxArea)) return false;
+        return true;
+      }).map(r => ({
+        ...r,
+        convertedDeposit: calcConvertedDeposit(r.deposit, r.monthlyRent, convRate)
+      }));
+
+      // ⭐️ [3단계 예외 처리]: 표본 5건 미만 시 면적 범위를 ±25%로 자동 확장
+      if (filtered.length > 0 && filtered.length < 5 && myArea > 0) {
+        tolerance = 0.25;
+        isExpanded = true;
+        minArea = Math.round(myArea * (1 - tolerance) * 10) / 10;
+        maxArea = Math.round(myArea * (1 + tolerance) * 10) / 10;
+
+        filtered = records.filter(r => {
+          if (dong && r.umdNm !== dong) return false;
+          if (houseType !== '전체' && r.houseType !== houseType) return false;
+          if (myArea > 0 && (r.excluUseAr < minArea || r.excluUseAr > maxArea)) return false;
+          return true;
+        }).map(r => ({
+          ...r,
+          convertedDeposit: calcConvertedDeposit(r.deposit, r.monthlyRent, convRate)
+        }));
+      }
+
+      // 최신 계약일자 순으로 정렬
+      filtered.sort((a, b) => b.dealDate.localeCompare(a.dealDate));
+
+      // 통계 계산
+      emptyState.style.display = 'none';
+      dashboardView.style.display = 'block';
+
+      if (filtered.length === 0) {
+        evalCard.style.borderLeftColor = '#64748b';
+        evalBadge.innerHTML = '⚪ 데이터 0건';
+        evalBadge.style.backgroundColor = '#f1f5f9';
+        evalBadge.style.color = '#64748b';
+        evalDisparityText.textContent = '비교 가능 표본 없음';
+        sampleCountLabel.textContent = '표본: 0건';
+        queryPeriodBadge.textContent = `조회기간: ${periodLabelText}`;
+        evalComment.textContent = '선택한 조건에 해당하는 실거래 내역이 없습니다. 면적이나 조회 기간, 지역·주택유형을 넓혀 다시 조회해 보세요.';
+        evalMyDepositVal.textContent = `${myConverted.toLocaleString()}만원`;
+        evalMarketMedianVal.textContent = '-';
+        evalMarketAvgVal.textContent = '-';
+
+        statMin.textContent = '-';
+        statQ1.textContent = '-';
+        statMedian.textContent = '-';
+        statQ3.textContent = '-';
+        statMax.textContent = '-';
+
+        distributionChartWrap.innerHTML = `
+          <div style="text-align: center; padding: 35px 20px; color: var(--text-muted); font-size: 0.95rem; background: #f8fafc; border-radius: 8px;">
+            ⚠️ <strong>해당 조건의 실거래 내역이 0건입니다.</strong><br>
+            <span style="font-size: 0.85rem; color: #64748b; margin-top: 6px; display: inline-block;">
+              • 조회 기간 범위를 <strong>'최근 1년'</strong>으로 늘려보세요.<br>
+              • 주택 유형을 <strong>'전체(연립+다세대)'</strong>로 선택하거나 인근 동네로 변경해보세요.
+            </span>
+          </div>
+        `;
+        tableRecordCount.textContent = '0';
+        areaFilterRangeText.textContent = `면적 필터: ${minArea}㎡ ~ ${maxArea}㎡ | ${periodLabelText}`;
+        tableBody.innerHTML = '<tr><td colspan="9" style="text-align: center; padding: 30px; color: var(--text-muted);">조건에 일치하는 실거래 내역이 없습니다.</td></tr>';
+        return;
+      }
+
+      const vals = filtered.map(r => r.convertedDeposit).sort((a,b) => a - b);
+      const count = vals.length;
+      const min = vals[0];
+      const max = vals[count - 1];
+      const q1 = Math.round(getPercentile(vals, 25));
+      const median = Math.round(getPercentile(vals, 50));
+      const q3 = Math.round(getPercentile(vals, 75));
+      const avg = Math.round((vals.reduce((a,b) => a+b, 0) / count) * 10) / 10;
+
+      const stats = { min, q1, median, average: avg, q3, max, count };
+      const evaluation = evaluateSuitability(myConverted, median);
+
+      // 1. 요약 카드 표시
+      evalCard.style.borderLeftColor = evaluation.color;
+      evalBadge.innerHTML = evaluation.badge;
+      evalBadge.style.backgroundColor = `${evaluation.color}18`;
+      evalBadge.style.color = evaluation.color;
+
+      const sign = evaluation.disparity > 0 ? '+' : '';
+      evalDisparityText.textContent = `주변 중앙값 대비 ${sign}${evaluation.disparity}%`;
+      evalDisparityText.style.color = evaluation.color;
+      
+      // 5건 미만 표본 자동 확장 배지 표시
+      if (isExpanded) {
+        sampleCountLabel.innerHTML = `<span style="background: #fef3c7; color: #b45309; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 700;">⚠️ 표본 부족으로 면적 ±25% 확장</span> ${count}건`;
+      } else {
+        sampleCountLabel.textContent = `유사 표본: ${count}건`;
+      }
+
+      queryPeriodBadge.textContent = `조회기간: ${periodLabelText}`;
+      evalComment.textContent = evaluation.comment;
+
+      evalMyDepositVal.textContent = `${Math.round(myConverted).toLocaleString()}만원`;
+      evalMarketMedianVal.textContent = `${Math.round(median).toLocaleString()}만원`;
+      evalMarketAvgVal.textContent = `${Math.round(avg).toLocaleString()}만원`;
+
+      // 5수치 통계 뱃지
+      statMin.textContent = `${Math.round(min).toLocaleString()}만`;
+      statQ1.textContent = `${Math.round(q1).toLocaleString()}만`;
+      statMedian.textContent = `${Math.round(median).toLocaleString()}만`;
+      statQ3.textContent = `${Math.round(q3).toLocaleString()}만`;
+      statMax.textContent = `${Math.round(max).toLocaleString()}만`;
+
+      // 2. 시세 분포 차트 렌더링
+      renderChart(distributionChartWrap, stats, myConverted, evaluation.color);
+
+      // 3. 비교 테이블 렌더링
+      tableRecordCount.textContent = count;
+      areaFilterRangeText.textContent = `유사면적(±15%): ${minArea}㎡ ~ ${maxArea}㎡ | ${periodLabelText}`;
+
+      tableBody.innerHTML = filtered.map(item => `
+        <tr>
+          <td><strong>${item.dealDate}</strong></td>
+          <td>${item.mhouseNm}</td>
+          <td><span style="font-size:0.8rem; background:#f1f5f9; padding:2px 6px; border-radius:4px;">${item.houseType}</span></td>
+          <td>${item.floor ? item.floor + '층' : '-'}</td>
+          <td class="text-right">${item.excluUseAr}㎡</td>
+          <td class="text-right font-bold">${item.deposit.toLocaleString()}만</td>
+          <td class="text-right">${item.monthlyRent ? item.monthlyRent.toLocaleString() + '만' : '-'}</td>
+          <td class="text-right font-bold" style="color: var(--primary);">${Math.round(item.convertedDeposit).toLocaleString()}만원</td>
+          <td>${item.buildYear || '-'}</td>
+        </tr>
+      `).join('');
+    }
+
+    btnAnalyze.addEventListener('click', runDashboard);
+  </script>
+</body>
+</html>
